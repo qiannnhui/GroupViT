@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from einops import rearrange
-from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from timm.layers import DropPath, to_2tuple, trunc_normal_
 
 from .builder import MODELS
 from .misc import Result, interpolate_pos_encoding
@@ -345,6 +345,28 @@ class Attention(nn.Module):
             k = rearrange(self.k_proj(key), 'b n (h c)-> b h n c', h=self.num_heads, b=B, c=C // self.num_heads)
             # [B, nh, S, C//nh]
             v = rearrange(self.v_proj(value), 'b n (h c)-> b h n c', h=self.num_heads, b=B, c=C // self.num_heads)
+
+        # 🚀 Use Flash Attention (scaled_dot_product_attention) if available
+        if hasattr(F, 'scaled_dot_product_attention'):
+            attn_mask = mask.unsqueeze(dim=1) if mask is not None else None
+            dropout_p = self.attn_drop.p if self.training else 0.0
+            
+            # Handle custom scale by pre-scaling Q
+            head_dim = C // self.num_heads
+            default_scale = head_dim ** -0.5
+            if abs(self.scale - default_scale) > 1e-6:
+                q = q * (self.scale / default_scale)
+            
+            out = F.scaled_dot_product_attention(
+                q, k, v,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=False
+            )
+            out = rearrange(out, 'b h n c -> b n (h c)', h=self.num_heads, b=B, n=N, c=C // self.num_heads)
+            out = self.proj(out)
+            out = self.proj_drop(out)
+            return out
 
         # [B, nh, N, S]
         attn = (q @ k.transpose(-2, -1)) * self.scale

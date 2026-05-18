@@ -1,0 +1,1 @@
+python main_group_vit.py --cfg configs/group_vit_gcc_yfcc_30e.yml --batch-size 16 --output ./output --eval --local_rank 2

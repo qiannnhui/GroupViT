@@ -8,7 +8,9 @@
 # Written by Jiarui Xu
 # -------------------------------------------------------------------------
 
-from mmcv.utils import Registry
+# from mmcv.utils import Registry
+# from mmcv import Registry
+from mmengine.registry import Registry
 from omegaconf import OmegaConf
 
 MODELS = Registry('model')

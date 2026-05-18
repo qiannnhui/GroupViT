@@ -1,0 +1,55 @@
+[project]
+name = "groupvit"
+version = "0.1.0"
+description = "GroupViT with Graph Contrastive Learning"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "captum>=0.7.0",
+    "datasets",
+    "einops>=0.8.2",
+    "ftfy>=6.3.1",
+    "matplotlib>=3.10.9",
+    "nltk>=3.9.4",
+    "numpy<2",
+    "omegaconf>=2.3.0",
+    "opencv-python",
+    "regex",
+    "scikit-learn>=1.7.2",
+    "timm>=1.0.26",
+    "torch==2.2.0",
+    "torch-geometric>=2.7.0",
+    "torchaudio==2.2.0",
+    "torchvision==0.17.0",
+    "tqdm>=4.67.3",
+    "transformers<4.41.0",
+    "wandb>=0.26.1",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
+torchvision = { index = "pytorch-cu121" }
+torchaudio = { index = "pytorch-cu121" }
+mmcv = { index = "openmmlab" }
+nvidia-cublas-cu12 = { index = "pypi" }
+nvidia-cuda-cupti-cu12 = { index = "pypi" }
+nvidia-cuda-nvrtc-cu12 = { index = "pypi" }
+nvidia-cuda-runtime-cu12 = { index = "pypi" }
+nvidia-cudnn-cu12 = { index = "pypi" }
+nvidia-cufft-cu12 = { index = "pypi" }
+nvidia-curand-cu12 = { index = "pypi" }
+nvidia-cusolver-cu12 = { index = "pypi" }
+nvidia-cusparse-cu12 = { index = "pypi" }
+nvidia-nccl-cu12 = { index = "pypi" }
+nvidia-nvtx-cu12 = { index = "pypi" }
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+
+

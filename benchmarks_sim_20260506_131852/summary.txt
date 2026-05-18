@@ -1,0 +1,13 @@
+==========================================================
+Final Summary (Last Epoch)
+----------------------------------------------------------
+Dataset              | Last Val Acc | Test Acc    
+----------------------------------------------------------
+MUTAG                | N/A          | N/A         
+PROTEINS             | N/A          | N/A         
+NCI1                 | N/A          | N/A         
+DD                   | N/A          | N/A         
+IMDB-BINARY          | N/A          | N/A         
+REDDIT-BINARY        | N/A          | N/A         
+REDDIT-MULTI-5K      | N/A          | N/A         
+COLLAB               | N/A          | N/A         

@@ -158,3 +158,18 @@ cython_debug/
 
 # Mac OS 
 .DS_Store
+
+# ckpts
+**/ckpts
+**/runs/
+**/benchmarks_cotrain_*.txt
+**/benchmarks_*.txt
+**/*.pth
+
+# demo
+**/demo
+# output
+**/output
+# apex
+**/apex
+**.python-version

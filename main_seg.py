@@ -26,11 +26,7 @@ from omegaconf import OmegaConf, read_write
 from segmentation.evaluation import build_seg_dataloader, build_seg_dataset, build_seg_inference
 from utils import get_config, get_logger, load_checkpoint
 
-try:
-    # noinspection PyUnresolvedReferences
-    from apex import amp
-except ImportError:
-    amp = None
+
 
 
 def parse_args():
@@ -80,8 +76,6 @@ def inference(cfg):
     model.cuda()
     logger.info(str(model))
 
-    if cfg.train.amp_opt_level != 'O0':
-        model = amp.initialize(model, None, opt_level=cfg.train.amp_opt_level)
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f'number of params: {n_parameters}')
@@ -150,8 +144,7 @@ def main():
     args = parse_args()
     cfg = get_config(args)
 
-    if cfg.train.amp_opt_level != 'O0':
-        assert amp is not None, 'amp not installed!'
+
 
     with read_write(cfg):
         cfg.evaluate.eval_only = True

@@ -1,0 +1,20 @@
+[project]
+name = "groupvit"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "einops>=0.8.2",
+    "ftfy>=6.3.1",
+    "nltk>=3.9.4",
+    "omegaconf>=2.3.0",
+    "opencv-python>=4.13.0.92",
+    "regex>=2026.4.4",
+    "termcolor>=3.3.0",
+    "timm>=1.0.26",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+    "tqdm>=4.67.3",
+    "webdataset>=1.0.2",
+]

@@ -49,11 +49,7 @@ from timm.utils import AverageMeter, accuracy
 from utils import (auto_resume_helper, build_dataset_class_tokens, build_optimizer, build_scheduler, data2cuda,
                    get_config, get_grad_norm, get_logger, load_checkpoint, parse_losses, reduce_tensor, save_checkpoint)
 
-try:
-    # noinspection PyUnresolvedReferences
-    from apex import amp
-except ImportError:
-    amp = None
+
 
 
 def parse_args():
@@ -111,8 +107,7 @@ def train(cfg):
     logger.info(str(model))
 
     optimizer = build_optimizer(cfg.train, model)
-    if cfg.train.amp_opt_level != 'O0':
-        model, optimizer = amp.initialize(model, optimizer, opt_level=cfg.train.amp_opt_level)
+    scaler = torch.cuda.amp.GradScaler(enabled=cfg.train.amp_opt_level != 'O0')
     model = MMDistributedDataParallel(model, device_ids=[torch.cuda.current_device()], broadcast_buffers=False)
     model_without_ddp = model.module
 
@@ -135,7 +130,7 @@ def train(cfg):
     max_metrics = {'max_accuracy': max_accuracy, 'max_miou': max_miou}
 
     if cfg.checkpoint.resume:
-        max_metrics = load_checkpoint(cfg, model_without_ddp, optimizer, lr_scheduler)
+        max_metrics = load_checkpoint(cfg, model_without_ddp, optimizer, lr_scheduler, scaler)
         max_accuracy, max_miou = max_metrics['max_accuracy'], max_metrics['max_miou']
         if 'cls' in cfg.evaluate.task:
             acc1, acc5, loss = validate_cls(cfg, data_loader_val, model)
@@ -149,12 +144,12 @@ def train(cfg):
     logger.info('Start training')
     start_time = time.time()
     for epoch in range(cfg.train.start_epoch, cfg.train.epochs):
-        loss_train_dict = train_one_epoch(cfg, model, data_loader_train, optimizer, epoch, lr_scheduler)
+        loss_train_dict = train_one_epoch(cfg, model, data_loader_train, optimizer, epoch, lr_scheduler, scaler)
         if dist.get_rank() == 0 and (epoch % cfg.checkpoint.save_freq == 0 or epoch == (cfg.train.epochs - 1)):
             save_checkpoint(cfg, epoch, model_without_ddp, {
                 'max_accuracy': max_accuracy,
                 'max_miou': max_miou
-            }, optimizer, lr_scheduler)
+            }, optimizer, lr_scheduler, scaler)
         dist.barrier()
         loss_train = loss_train_dict['total_loss']
         logger.info(f'Avg loss of the network on the {len(dataset_train)} train images: {loss_train:.2f}')
@@ -167,7 +162,7 @@ def train(cfg):
                 max_metrics['max_accuracy'] = max(max_metrics['max_accuracy'], acc1)
                 if cfg.evaluate.cls.save_best and dist.get_rank() == 0 and acc1 > max_accuracy:
                     save_checkpoint(
-                        cfg, epoch, model_without_ddp, max_metrics, optimizer, lr_scheduler, suffix='best_acc1')
+                        cfg, epoch, model_without_ddp, max_metrics, optimizer, lr_scheduler, scaler, suffix='best_acc1')
                 dist.barrier()
                 max_accuracy = max_metrics['max_accuracy']
                 logger.info(f'Max accuracy: {max_accuracy:.2f}%')
@@ -177,7 +172,7 @@ def train(cfg):
                 max_metrics['max_miou'] = max(max_metrics['max_miou'], miou)
                 if cfg.evaluate.seg.save_best and dist.get_rank() == 0 and miou > max_miou:
                     save_checkpoint(
-                        cfg, epoch, model_without_ddp, max_metrics, optimizer, lr_scheduler, suffix='best_miou')
+                        cfg, epoch, model_without_ddp, max_metrics, optimizer, lr_scheduler, scaler, suffix='best_miou')
                 dist.barrier()
                 max_miou = max_metrics['max_miou']
                 logger.info(f'Max mIoU: {max_miou:.2f}%')
@@ -200,7 +195,7 @@ def train(cfg):
     dist.barrier()
 
 
-def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler):
+def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, scaler):
     logger = get_logger()
     dist.barrier()
     model.train()
@@ -222,45 +217,39 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler):
 
         batch_size = config.data.batch_size
 
-        losses = model(**samples)
-
-        loss, log_vars = parse_losses(losses)
+        with torch.cuda.amp.autocast(enabled=config.train.amp_opt_level != 'O0'):
+            losses = model(**samples)
+            loss, log_vars = parse_losses(losses)
 
         if config.train.accumulation_steps > 1:
             loss = loss / config.train.accumulation_steps
-            if config.train.amp_opt_level != 'O0':
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
+            scaler.scale(loss).backward()
+            
+            if (idx + 1) % config.train.accumulation_steps == 0:
                 if config.train.clip_grad:
-                    grad_norm = torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), config.train.clip_grad)
-                else:
-                    grad_norm = get_grad_norm(amp.master_params(optimizer))
-            else:
-                loss.backward()
-                if config.train.clip_grad:
+                    scaler.unscale_(optimizer)
                     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.train.clip_grad)
                 else:
+                    scaler.unscale_(optimizer)
                     grad_norm = get_grad_norm(model.parameters())
-            if (idx + 1) % config.train.accumulation_steps == 0:
-                optimizer.step()
+                
+                scaler.step(optimizer)
+                scaler.update()
                 optimizer.zero_grad()
                 lr_scheduler.step_update(epoch * num_steps + idx)
+            else:
+                grad_norm = torch.tensor(0.0)
         else:
             optimizer.zero_grad()
-            if config.train.amp_opt_level != 'O0':
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
-                if config.train.clip_grad:
-                    grad_norm = torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), config.train.clip_grad)
-                else:
-                    grad_norm = get_grad_norm(amp.master_params(optimizer))
+            scaler.scale(loss).backward()
+            if config.train.clip_grad:
+                scaler.unscale_(optimizer)
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.train.clip_grad)
             else:
-                loss.backward()
-                if config.train.clip_grad:
-                    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.train.clip_grad)
-                else:
-                    grad_norm = get_grad_norm(model.parameters())
-            optimizer.step()
+                scaler.unscale_(optimizer)
+                grad_norm = get_grad_norm(model.parameters())
+            scaler.step(optimizer)
+            scaler.update()
             lr_scheduler.step_update(epoch * num_steps + idx)
 
         torch.cuda.synchronize()
@@ -400,8 +389,7 @@ def main():
     args = parse_args()
     cfg = get_config(args)
 
-    if cfg.train.amp_opt_level != 'O0':
-        assert amp is not None, 'amp not installed!'
+
 
     # start faster ref: https://github.com/open-mmlab/mmdetection/pull/7036
     mp.set_start_method('fork', force=True)

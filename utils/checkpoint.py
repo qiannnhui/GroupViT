@@ -36,14 +36,10 @@ from omegaconf import read_write
 
 from .logger import get_logger
 
-try:
-    # noinspection PyUnresolvedReferences
-    from apex import amp
-except ImportError:
-    amp = None
 
 
-def load_checkpoint(config, model, optimizer, lr_scheduler):
+
+def load_checkpoint(config, model, optimizer, lr_scheduler, scaler=None):
     logger = get_logger()
     logger.info(f'==============> Resuming form {config.checkpoint.resume}....................')
     checkpoint = CheckpointLoader.load_checkpoint(config.checkpoint.resume, map_location='cpu')
@@ -56,9 +52,8 @@ def load_checkpoint(config, model, optimizer, lr_scheduler):
         lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
         with read_write(config):
             config.train.start_epoch = checkpoint['epoch'] + 1
-        if 'amp' in checkpoint and config.train.amp_opt_level != 'O0' and checkpoint[
-                'config'].train.amp_opt_level != 'O0':
-            amp.load_state_dict(checkpoint['amp'])
+        if 'scaler' in checkpoint and config.train.amp_opt_level != 'O0' and scaler is not None:
+            scaler.load_state_dict(checkpoint['scaler'])
         logger.info(f"=> loaded successfully '{config.checkpoint.resume}' (epoch {checkpoint['epoch']})")
         metrics = checkpoint['metrics']
 
@@ -67,7 +62,7 @@ def load_checkpoint(config, model, optimizer, lr_scheduler):
     return metrics
 
 
-def save_checkpoint(config, epoch, model, metrics, optimizer, lr_scheduler, suffix=''):
+def save_checkpoint(config, epoch, model, metrics, optimizer, lr_scheduler, scaler=None, suffix=''):
     save_state = {
         'model': model.state_dict(),
         'optimizer': optimizer.state_dict(),
@@ -81,8 +76,8 @@ def save_checkpoint(config, epoch, model, metrics, optimizer, lr_scheduler, suff
     for k, v in metrics.items():
         save_state[k] = v
 
-    if config.train.amp_opt_level != 'O0':
-        save_state['amp'] = amp.state_dict()
+    if config.train.amp_opt_level != 'O0' and scaler is not None:
+        save_state['scaler'] = scaler.state_dict()
 
     if len(suffix) > 0 and not suffix.startswith('_'):
         suffix = '_' + suffix

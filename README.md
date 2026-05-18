@@ -65,8 +65,7 @@ pip install mmcv-full==1.3.14 -f https://download.openmmlab.com/mmcv/dist/cu111/
 pip install mmsegmentation==0.18.0
 pip install webdataset==0.1.103
 pip install timm==0.4.12
-git clone https://github.com/NVIDIA/apex
-cd && apex && pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+
 pip install opencv-python==4.4.0.46 termcolor==1.1.0 diffdist einops omegaconf
 pip install nltk ftfy regex tqdm
 ```
